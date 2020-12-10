@@ -6,19 +6,13 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 import cv2
 import message_filters
-import tensorflow as tf
 from image_segmentation.predict import Predict
 import numpy as np
 
 """
-READ about:
-
-I spent about 45 minutes to figure out we have to set a certain qos
-to subscribe image from gazebo (qos between subscriber and publisher pair must 
-be compatible)
-https://index.ros.org/doc/ros2/Concepts/About-Quality-of-Service-Settings/#qos-compatibilities
-
-*args, **kwargs 
+This class subscribes to the overhead images and gives service to the global planner as follow:
+1- service receives a request for segmented images from global_planner
+3- feeds the overhead images to the segmentation_networks and returns the results to the global_planner 
 """
 
 
@@ -68,7 +62,6 @@ class ImageSegmentationService(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-
     minimal_service = ImageSegmentationService()
 
     rclpy.spin(minimal_service)
