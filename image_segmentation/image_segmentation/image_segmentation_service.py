@@ -8,7 +8,7 @@ import cv2
 import message_filters
 from image_segmentation.predict import Predict
 import numpy as np
-
+from custom_msg_srv.srv import ImageBatch
 """
 This class subscribes to the overhead images and gives service to the global planner as follow:
 1- service receives a request for segmented images from global_planner
@@ -21,22 +21,24 @@ class ImageSegmentationService(Node):
         super().__init__('image_segmentation_service')
 
         self.overhead_camera_num = 1
-        self.show_images = True
+        self.show_images = False
         self.image_subscriber = [
             message_filters.Subscriber(self, Image, '/overhead_cam_' + str(i + 1) + '/camera/image_raw',
                                        qos_profile=qos_profile_sensor_data)
             for i in range(self.overhead_camera_num)]
 
-        self.service = self.create_service(AddTwoInts, 'add_two_ints', self.add_two_ints_callback)
+        self.service = self.create_service(ImageBatch, 'get_segmented_images', self.give_service_to_global_planner)
 
         syn = message_filters.ApproximateTimeSynchronizer(self.image_subscriber, 1, 0.1)
         syn.registerCallback(self.image_callback)
 
         self.predictor = Predict()
+        self.segmented_images = []
 
-    def add_two_ints_callback(self, request, response):
-        response.sum = request.a + request.b
-        self.get_logger().info('Incoming request \n a: %d  b: %d' % (request.a, request.b))
+    def give_service_to_global_planner(self, request, response):
+        self.get_logger().info('Incoming request from global planner')
+        for i, segmented_image in enumerate(self.segmented_images):
+            response.image[i] = CvBridge().cv2_to_imgmsg(cvim=segmented_image)
         return response
 
     def image_callback(self, *images):
@@ -45,17 +47,17 @@ class ImageSegmentationService(Node):
         for image in images:
             cv_images.append(CvBridge().imgmsg_to_cv2(image, desired_encoding='bgr8'))
 
-        segmented_images = []
+        self.segmented_images.clear()
         predicted_images = self.predictor.predict(*cv_images)
         for i in range(self.overhead_camera_num):
-            segmented_images.append(predicted_images[i, :, :].astype(np.float))
+            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32)*255.0)
 
         if self.show_images:
             for i, cv_image in enumerate(cv_images):
                 cv2.imshow("image" + str(i + 1), cv_image)
             cv2.waitKey(1)
 
-            for i, segmented_image in enumerate(segmented_images):
+            for i, segmented_image in enumerate(self.segmented_images):
                 cv2.imshow("segmented image" + str(i + 1), segmented_image)
             cv2.waitKey(1)
 

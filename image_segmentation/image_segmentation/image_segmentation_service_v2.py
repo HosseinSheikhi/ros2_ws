@@ -22,7 +22,7 @@ class ImageSegmentationService(Node):
         # define a client to send request for the overhead images
         self.overhead_client = self.create_client(ImageBatch, 'get_images')
         # gives service to the global planner.
-        self.global_planer_service = self.create_service(AddTwoInts, 'add_two_ints', self.add_two_ints_callback)
+        self.global_planer_service = self.create_service(ImageBatch, 'get_segmented_images', self.give_service_to_global_planner)
 
         while not self.overhead_client.wait_for_service(timeout_sec=1):
             self.get_logger().info('overhead cameras service not available, trying again ...')
@@ -43,9 +43,10 @@ class ImageSegmentationService(Node):
         self.future = self.overhead_client.call_async(ImageBatch.Request())
         self.waiting_for_overhead_service = True
 
-    def add_two_ints_callback(self, request, response):
-        response.sum = request.a + request.b
-        self.get_logger().info('Incoming request\na: %d b: %d' % (request.a, request.b))
+    def give_service_to_global_planner(self, request, response):
+        self.get_logger().info('Incoming request from global planner')
+
+        # before sending the response, a request for new overhead images must be send
         self.send_request()
         return response
 
@@ -58,7 +59,7 @@ class ImageSegmentationService(Node):
         segmented_images = []
         predicted_images = self.predictor.predict(*cv_images)
         for i in range(self.overhead_camera_num):
-            segmented_images.append(predicted_images[i, :, :].astype(np.float))
+            segmented_images.append(predicted_images[i, :, :].astype(np.float)*255.0)
 
         if self.show_images:
             for i, cv_image in enumerate(cv_images):

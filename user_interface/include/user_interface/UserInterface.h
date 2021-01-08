@@ -8,20 +8,23 @@
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include "sensor_msgs/msg/image.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 
 class UserInterface : public rclcpp::Node {
  public:
   explicit UserInterface(rclcpp::NodeOptions options);
  private:
   std::vector<cv::Mat> original_frames_;
-  std::vector<cv::Mat> segmented_frames;
-  const uint number_of_cameras{2};
-  const uint image_width{640};
-  const uint image_height{480};
+  std::vector<cv::Mat> segmented_frames_;
+  const uint number_of_cameras_{2};
+  std::vector<cv::Point> cameras_pose_;
+  const uint image_width_{640};
+  const uint image_height_{480};
 
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_1_subscriber_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_2_subscriber_;
 
+  rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr goal_publisher_;
   void original_image_1_callback(const sensor_msgs::msg::Image::ConstSharedPtr image);
   void original_image_2_callback(const sensor_msgs::msg::Image::ConstSharedPtr image);
   static void mouse_callback_1(int event, int x, int y, int flags, void *user_data);
