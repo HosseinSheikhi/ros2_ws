@@ -1,6 +1,9 @@
-#custom_msg_srv
+# Custom_msg_srv pakage
 
-The custom messeges and services which I need to for this project is declared in this package
+The custom messeges and services which I need to for this project are declared in this package.
 
-##services
+## Services
 ### ImageBatch: a service to send a batch of images
+
+
+## Messeges
