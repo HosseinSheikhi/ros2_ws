@@ -16,7 +16,7 @@ class GlobalPlanner : public rclcpp::Node {
   explicit GlobalPlanner(rclcpp::NodeOptions options);
  private:
   bool debug_ = true;
-  const uint number_of_cameras_{1};
+  const uint number_of_cameras_{2};
   const uint image_width_{640};
   const uint image_height_{480};
   const uint grid_resolution_{16};

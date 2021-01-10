@@ -11,8 +11,10 @@ using namespace std::chrono_literals;
 GlobalPlanner::GlobalPlanner(rclcpp::NodeOptions options)
 : Node("global_planner_node", options){
 
-  segmented_images_client_ = this->create_client<custom_msg_srv::srv::ImageBatch>("get_segmented_images");
+  // this client sends its request to image_segmentation package's service to get the segmented images
+  segmented_images_client_ = this->create_client<custom_msg_srv::srv::ImageBatch>("autonomous_robot/get_segmented_images");
 
+  // check the connection to the image_segmentation package's service
   while (!segmented_images_client_->wait_for_service(1s)){
     if (!rclcpp::ok()) {
       RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
@@ -21,7 +23,8 @@ GlobalPlanner::GlobalPlanner(rclcpp::NodeOptions options)
     RCLCPP_INFO(this->get_logger(), " segmented_images_service not available, trying again...");
   }
 
-  update_planning_timer_ = this->create_wall_timer(1s,
+  // a timer to call the global planning
+  update_planning_timer_ = this->create_wall_timer(5s,
                        std::bind(&GlobalPlanner::make_request_for_segmented_images,
                          this));
 
@@ -40,6 +43,7 @@ GlobalPlanner::GlobalPlanner(rclcpp::NodeOptions options)
 
 void GlobalPlanner::make_request_for_segmented_images() {
   auto request = std::make_shared<custom_msg_srv::srv::ImageBatch::Request>();
+  RCLCPP_INFO(this->get_logger(), " sending request to image segmentation node...");
 
   rclcpp::Client<custom_msg_srv::srv::ImageBatch>::SharedFuture result_future =
       segmented_images_client_->async_send_request(

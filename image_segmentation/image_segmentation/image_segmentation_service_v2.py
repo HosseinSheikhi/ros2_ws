@@ -15,58 +15,67 @@ This class gets overhead images as a client and gives service to the global plan
 3- feeds the overhead images to the segmentation_networks and returns the results to the global_planner 
 """
 
+"""
+TODO: send a request to overhead cameras must be based on a request from global planner not based on a timer
+However, I have faced by deadlock errors when I was trying to develop this version 
+"""
 
 class ImageSegmentationService(Node):
     def __init__(self):
         super().__init__("image_segmentation_service")
         # define a client to send request for the overhead images
-        self.overhead_client = self.create_client(ImageBatch, 'get_images')
+        self.overhead_client = self.create_client(ImageBatch, 'autonomous_robot/overhead_camera_service')
         # gives service to the global planner.
-        self.global_planer_service = self.create_service(ImageBatch, 'get_segmented_images', self.give_service_to_global_planner)
+        self.global_planer_service = self.create_service(ImageBatch, 'autonomous_robot/get_segmented_images', self.give_service_to_global_planner)
 
         while not self.overhead_client.wait_for_service(timeout_sec=1):
             self.get_logger().info('overhead cameras service not available, trying again ...')
 
+        self.timer = self.create_timer(1, self.send_request)
         self.waiting_for_overhead_service = False
         self.future = None
 
-        self.cv_overhead_images = None
+        self.overhead_images = None
+        self.segmented_images = []
         self.overhead_camera_num = None
-        self.show_images = True
+        self.show_images = False
         self.predictor = Predict()
 
     def send_request(self):
         """
         sending a request to overhead_cameras_service for overhead_images
-        :return:
+        :return: None
         """
+        self.get_logger().info('sending request to overhead camera node ...')
         self.future = self.overhead_client.call_async(ImageBatch.Request())
         self.waiting_for_overhead_service = True
 
     def give_service_to_global_planner(self, request, response):
         self.get_logger().info('Incoming request from global planner')
-
-        # before sending the response, a request for new overhead images must be send
-        self.send_request()
+        self.image_proc(self.overhead_images)
+        for i, segmented_image in enumerate(self.segmented_images):
+            response.image[i] = CvBridge().cv2_to_imgmsg(cvim=segmented_image)
         return response
 
     def image_proc(self, overhead_images):
+        self.get_logger().info('doing segmentation ...')
+
         cv_images = []
         for image in overhead_images:
             cv_images.append(CvBridge().imgmsg_to_cv2(image, desired_encoding='bgr8'))
 
         self.overhead_camera_num = len(cv_images)
-        segmented_images = []
+        self.segmented_images.clear()
         predicted_images = self.predictor.predict(*cv_images)
         for i in range(self.overhead_camera_num):
-            segmented_images.append(predicted_images[i, :, :].astype(np.float)*255.0)
+            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32)*255.0)
 
         if self.show_images:
             for i, cv_image in enumerate(cv_images):
                 cv2.imshow("image" + str(i + 1), cv_image)
             cv2.waitKey(1)
 
-            for i, segmented_image in enumerate(segmented_images):
+            for i, segmented_image in enumerate(self.segmented_images):
                 cv2.imshow("segmented image" + str(i + 1), segmented_image)
             cv2.waitKey(1)
 
@@ -74,21 +83,21 @@ class ImageSegmentationService(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    minimal_client = ImageSegmentationService()
+    image_segmentation_node = ImageSegmentationService()
 
     while rclpy.ok():
-        rclpy.spin_once(minimal_client)
-        if minimal_client.waiting_for_overhead_service:
-            if minimal_client.future.done():
-                try:
-                    response = minimal_client.future.result()
-                    minimal_client.image_proc(response.image)
-                    minimal_client.get_logger().info("succeed")
-                    minimal_client.waiting_for_overhead_service = False
-                except Exception as e:
-                    minimal_client.get_logger().info("service call failed")
+        rclpy.spin_once(image_segmentation_node)
+        if image_segmentation_node.waiting_for_overhead_service:
+            rclpy.spin_until_future_complete(image_segmentation_node, image_segmentation_node.future, timeout_sec=1)
+        if image_segmentation_node.future.done():
+            try:
+                response = image_segmentation_node.future.result()
+                image_segmentation_node.overhead_images = response.image
+                image_segmentation_node.waiting_for_overhead_service = False
+            except Exception as e:
+                image_segmentation_node.get_logger().info("service call failed")
 
-    minimal_client.destroy_node()
+    image_segmentation_node.destroy_node()
     rclpy.shutdown()
 
 

@@ -20,16 +20,20 @@ class ImageSegmentationService(Node):
     def __init__(self):
         super().__init__('image_segmentation_service')
 
-        self.overhead_camera_num = 1
+        self.overhead_camera_num = 2
         self.show_images = False
+        # define message_filter::subscriber to #self.overhead_camera_num overhead cameras
         self.image_subscriber = [
             message_filters.Subscriber(self, Image, '/overhead_cam_' + str(i + 1) + '/camera/image_raw',
                                        qos_profile=qos_profile_sensor_data)
             for i in range(self.overhead_camera_num)]
 
-        self.service = self.create_service(ImageBatch, 'get_segmented_images', self.give_service_to_global_planner)
+        # gives service to the global_planner package's client
+        self.service = self.create_service(ImageBatch, 'autonomous_robot/get_segmented_images', self.give_service_to_global_planner)
 
+        # define the policy for message filtering
         syn = message_filters.ApproximateTimeSynchronizer(self.image_subscriber, 1, 0.1)
+        # message_filter::subscriber will start subscribing upon being registered
         syn.registerCallback(self.image_callback)
 
         self.predictor = Predict()
@@ -50,7 +54,7 @@ class ImageSegmentationService(Node):
         self.segmented_images.clear()
         predicted_images = self.predictor.predict(*cv_images)
         for i in range(self.overhead_camera_num):
-            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32)*255.0)
+            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32)*255.0) # 2 (224,224)
 
         if self.show_images:
             for i, cv_image in enumerate(cv_images):
