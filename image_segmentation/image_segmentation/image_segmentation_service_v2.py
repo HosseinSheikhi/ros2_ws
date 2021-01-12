@@ -31,7 +31,7 @@ class ImageSegmentationService(Node):
         while not self.overhead_client.wait_for_service(timeout_sec=1):
             self.get_logger().info('overhead cameras service not available, trying again ...')
 
-        self.timer = self.create_timer(1, self.send_request)
+        self.timer = self.create_timer(2, self.send_request)
         self.waiting_for_overhead_service = False
         self.future = None
 

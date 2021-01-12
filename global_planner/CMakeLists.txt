@@ -33,7 +33,8 @@ include_directories(include)
 set(library_name ${PROJECT_NAME})
 
 add_library(${library_name} SHARED
-        src/GlobalPlanner.cpp)
+        src/GlobalPlanner.cpp
+        src/NF2.cpp)
 ament_target_dependencies(${library_name} ${dependencies})
 
 add_executable(global_planner_main src/main.cpp)
