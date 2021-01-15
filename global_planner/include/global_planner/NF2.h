@@ -12,7 +12,7 @@ class NF2 {
 
  public:
   explicit NF2( uint grid_resolution, uint image_width = 640, uint image_height=480, bool debug= true);
-  void compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose);
+  std::vector<cv::Point> compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose); // returns the grids sequence from robot pose to goal
   static uint total_instances_counter; // keeps track of total number of NF2 instances
 
  private:
@@ -76,9 +76,10 @@ class NF2 {
   void reminder_potential();
   void potential_debug();
 
-  cv::Point get_min_vertex(std::vector<std::vector<int>> distance_vertices, std::vector<cv::Point> Q) const;
-  std::vector<std::vector<cv::Point>> best_first_search();
-
+  cv::Point get_min_vertex(std::vector<std::vector<uint>> distance_vertices, std::vector<cv::Point> Q) const;
+  std::vector<cv::Point> best_first_search();
+  std::vector<cv::Point> find_final_path(std::vector<std::vector<cv::Point>> path);
+  void debug_final_path(std::vector<cv::Point> final_path);
   void show_image(std::string window_name, cv::Mat image);
 
 };

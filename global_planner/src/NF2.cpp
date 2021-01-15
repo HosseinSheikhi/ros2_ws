@@ -20,7 +20,7 @@ NF2::NF2( const uint grid_resolution, const uint image_width, const uint image_h
                                           cv::Point(dilate_size_, dilate_size_ ) );
 }
 
-void NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
+std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
   original_binary_frame_ = frame;
 
   goal_.x = static_cast<int>(goal.x/(image_width_/grid_resolution_)); // navigation goal TODO: is it best time to convert to indexes?
@@ -52,7 +52,7 @@ void NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
   // connect goal to the skeleton
   if (!connect_goal()) {
     std::cout << "[WARNING] Could not compute global path!" << std::endl;
-    return;
+    return std::vector<cv::Point>();
   }
   connect_goal_debug();
 
@@ -60,34 +60,39 @@ void NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
   skeleton_potential();
   // computer potential of reminded configurations
   reminder_potential();
+  if (potential_values_[goal_.x][goal_.y] == M or potential_values_[robot_pose_.x][robot_pose_.y] == M) { // means goal_ or pose_ potential value was not calculated and means one of those is not in the free space
+    std::cout << "[WARNING] Could not compute global path!" << std::endl;
+    return std::vector<cv::Point>();
+  }
 
-  auto result_path = best_first_search();
-  int row = goal_.x;
-  int col = goal_.y;
-  if(!result_path.empty()) {
-    while (true) {
-      auto temp = result_path[row][col];
+  auto final_path = best_first_search();
+  if(!final_path.empty())
+    std::cout << "[INFO] Global path find successfully!" << std::endl;
+  else
+    std::cout << "[WARNING] Global path could not be find!" << std::endl;
+
+  if(!final_path.empty())
+    debug_final_path(final_path);
+  return final_path;
+}
+
+void NF2::debug_final_path(std::vector<cv::Point> final_path){
+  if (debug_){
+    for (auto &conf : final_path) {
       putText(original_rgb_frame_,
               "*",
-              cv::Point(image_width_ / grid_resolution_ * row + 5, image_height_ / grid_resolution_ * col + 10),
+              cv::Point(image_width_ / grid_resolution_ * conf.x + 5, image_height_ / grid_resolution_ * conf.y + 10),
               cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
               0.3,
               cv::Scalar(0, 255, 255),
               1);
-      if (temp == robot_pose_)
-        break;
-      else {
-        row = temp.x;
-        col = temp.y;
-      }
     }
     show_image("Global Path", original_rgb_frame_);
   }
-  else
-    std::cout<<"[WARNING] Global path could not be find!"<<std::endl;
 }
 
-cv::Point NF2::get_min_vertex(std::vector<std::vector<int>> distance_vertices, std::vector<cv::Point> Q) const{
+
+cv::Point NF2::get_min_vertex(std::vector<std::vector<uint>> distance_vertices, std::vector<cv::Point> Q) const{
   /*
    * returns the vertex by minimum distance
    */
@@ -105,7 +110,24 @@ cv::Point NF2::get_min_vertex(std::vector<std::vector<int>> distance_vertices, s
   return temp;
 }
 
-std::vector<std::vector<cv::Point>> NF2::best_first_search(){
+std::vector<cv::Point> NF2::find_final_path(std::vector<std::vector<cv::Point>> path){
+  std::vector<cv::Point> final_path;
+  int row = goal_.x;
+  int col = goal_.y;
+  while (true) {
+    auto temp = path[row][col];
+    if (temp == robot_pose_)
+      break;
+    else {
+      final_path.insert(final_path.begin(), temp); // insert at the beginning
+      row = temp.x;
+      col = temp.y;
+    }
+  }
+  return final_path;
+}
+
+std::vector<cv::Point> NF2::best_first_search(){
 
   /*
    *  1) Create a set spt (shortest path tree ) that keeps track of vertices included in shortest path tree, i.e.,
@@ -121,25 +143,20 @@ std::vector<std::vector<cv::Point>> NF2::best_first_search(){
             is less than the distance value of v, then update the distance value of v.
    */
   std::vector<cv::Point> spt;
+  std::vector<std::vector<cv::Point>> path;
+  path.resize(grid_resolution_, std::vector<cv::Point>(grid_resolution_));
 
-  std::vector<std::vector<int>> distance_vertices; //Assign a distance value to all vertices in the input graph
-  distance_vertices.resize(grid_resolution_, std::vector<int>(grid_resolution_,INFINITY));
-  distance_vertices[robot_pose_.x][robot_pose_.y] = 0;
-  std::vector<std::vector<cv::Point>> result_path;
-  result_path.resize(grid_resolution_, std::vector<cv::Point>(grid_resolution_));
+  std::vector<std::vector<uint>> distance_vertices; //Assign a distance value to all vertices in the input graph
+  distance_vertices.resize(grid_resolution_, std::vector<uint>(grid_resolution_,INFINITY)); //Initialize all distance values as INFINITE.
+  distance_vertices[robot_pose_.x][robot_pose_.y] = 0; //Assign distance value as 0 for the source vertex
+
   std::vector<cv::Point> Q; // includes all the vertices we have to search
   for(uint i=0; i<grid_resolution_; i++)
     for(uint j=0; j<grid_resolution_; j++)
-      if(potential_values_[i][j]!=M)
+      if(potential_values_[i][j]!=M) // we have to search those who their potential value is computed already
         Q.push_back(cv::Point(i,j));
 
   std::vector<cv::Point> neighbours;
-
-  if(potential_values_[robot_pose_.x][robot_pose_.y]==M){
-    std::cout<<"[WARNING]in best_first_search. No free path connects q_init to q_goal at the resolution grid"<<std::endl;
-    result_path.clear();
-    return result_path ;
-  }
 
   while(!Q.empty()){
     cv::Point temp = get_min_vertex(distance_vertices, Q); //Q must be a priority list. We use get_min_vertex() to simulate it
@@ -153,18 +170,17 @@ std::vector<std::vector<cv::Point>> NF2::best_first_search(){
             < distance_vertices[neighbor.x][neighbor.y]) {
           distance_vertices[neighbor.x][neighbor.y] =
               distance_vertices[temp.x][temp.y] + potential_values_[neighbor.x][neighbor.y];
-          result_path[neighbor.x][neighbor.y] = temp;
+          path[neighbor.x][neighbor.y] = temp;
           if (neighbor == goal_) {
-            std::cout<<"[INFO] Goal Reached."<<std::endl;
-            return result_path;
+            std::cout<<"[INFO] Global path is find."<<std::endl;
+            return find_final_path(path);
           }
         }
     }
   }
 
   std::cout<<"[INFO] Could not find the Goal."<<std::endl;
-  result_path.clear();
-  return result_path;
+  return std::vector<cv::Point>();
 }
 
 
