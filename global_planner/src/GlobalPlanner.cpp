@@ -11,7 +11,6 @@ GlobalPlanner::GlobalPlanner(rclcpp::NodeOptions options)
 
   // this client sends its request to image_segmentation package's service to get the segmented images
   segmented_images_client_ = this->create_client<custom_msg_srv::srv::ImageBatch>("autonomous_robot/get_segmented_images");
-
   // check the connection to the image_segmentation package's service
   while (!segmented_images_client_->wait_for_service(1s)){
     if (!rclcpp::ok()) {
@@ -21,15 +20,28 @@ GlobalPlanner::GlobalPlanner(rclcpp::NodeOptions options)
     RCLCPP_INFO(this->get_logger(), " segmented_images_service not available, trying again...");
   }
 
+  //subscribe to the goal published with UI
+  robot_goal_ui_subscriber_ = this->create_subscription<geometry_msgs::msg::Point>(
+      "autonomous_robot/ui/goal",
+      rclcpp::SystemDefaultsQoS(),
+      std::bind(&GlobalPlanner::robot_goal_ui_callback, this, std::placeholders::_1));
+
+  //subscribe to the robot start pose published with UI
+  robot_pose_ui_subscriber_ = this->create_subscription<geometry_msgs::msg::Point>(
+      "autonomous_robot/ui/pose",
+      rclcpp::SystemDefaultsQoS(),
+      std::bind(&GlobalPlanner::robot_pose_ui_callback, this, std::placeholders::_1));
+
   // a timer to call the global planning
-  update_planning_timer_ = this->create_wall_timer(2s,
-                       std::bind(&GlobalPlanner::make_request_for_segmented_images,
+  update_global_planner_timer = this->create_wall_timer(2s,
+                                                        std::bind(&GlobalPlanner::make_request_for_segmented_images,
                          this));
 
+  // initialize variables
   original_frames_.reserve(number_of_cameras_);
-
   nf2_instance = std::make_shared<NF2>(grid_resolution_);
-
+  robot_goal_ = cv::Point();
+  robot_pose_ = cv::Point();
 }
 
 void GlobalPlanner::make_request_for_segmented_images() {
@@ -53,14 +65,25 @@ void GlobalPlanner::response_received_callback(rclcpp::Client<custom_msg_srv::sr
     original_frames_.push_back(cv_image_ptr->image);
   }
 
-  //show_images("original segmented", original_frames_);
-  nf2_instance->compute_nf2(original_frames_[1], goal_, robot_pose_);
-  //nf2();
+  // TODO will change after image stitching is done
+  if (is_pose_set && is_goal_set) {// if robots goal and pose are set
+    if (robot_pose_camera_index == robot_goal_camera_index) // if both robots goal and pose are in the same camera frame
+      nf2_instance->compute_nf2(original_frames_[robot_pose_camera_index], robot_goal_, robot_pose_);
+  }
+  else
+    RCLCPP_INFO(this->get_logger(), " robot goal and/or pose must be set by the user to global planner start working");
 }
 
-void GlobalPlanner::show_images(const std::string window_name, const std::vector<cv::Mat> images){
-  for(uint i=0; i<images.size();i++){
-    cv::imshow(window_name + std::to_string(i), images[i]);
-    cv::waitKey(1);
-  }
+void GlobalPlanner::robot_goal_ui_callback(geometry_msgs::msg::Point::ConstSharedPtr goal_point) {
+  robot_goal_.x = (goal_point->x);
+  robot_goal_.y = static_cast<int>(goal_point->y);
+  robot_goal_camera_index = static_cast<int>(goal_point->z);
+  is_goal_set = true;
+}
+
+void GlobalPlanner::robot_pose_ui_callback(geometry_msgs::msg::Point::ConstSharedPtr pose_point) {
+  robot_pose_.x = static_cast<int>(pose_point->x);
+  robot_pose_.y = static_cast<int>(pose_point->y);
+  robot_pose_camera_index = static_cast<int>(pose_point->z);
+  is_pose_set = true;
 }

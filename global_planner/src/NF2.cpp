@@ -22,8 +22,11 @@ NF2::NF2( const uint grid_resolution, const uint image_width, const uint image_h
 
 void NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
   original_binary_frame_ = frame;
-  goal_ = goal; // navigation goal
-  robot_pose_ = robot_pose; // navigation starting point
+
+  goal_.x = static_cast<int>(goal.x/(image_width_/grid_resolution_)); // navigation goal TODO: is it best time to convert to indexes?
+  goal_.y = static_cast<int>(goal.y/(image_height_/grid_resolution_)); // navigation goal
+  robot_pose_.x = static_cast<int>(robot_pose.x/(image_width_/grid_resolution_)); // navigation starting point
+  robot_pose_.y = static_cast<int>(robot_pose.y/(image_height_/grid_resolution_)); // navigation starting point
 
   /*
    * main function for numerical potential field
@@ -486,11 +489,20 @@ void NF2::draw_grids() {
   /*
    * For illustration purpose. Draw grids on rgb frame
   */
-  if (debug_)
-    for (int i=0; i<grid_resolution_; i++){
-      line(original_rgb_frame_, cv::Point(image_width_/grid_resolution_*i,0),cv::Point(image_width_/grid_resolution_*i,image_height_), cv::Scalar(255,0,0));
-      line(original_rgb_frame_, cv::Point(0,image_height_/grid_resolution_*i),cv::Point(image_width_, image_height_/grid_resolution_*i), cv::Scalar(255,0,0));
+  if (debug_) {
+    for (int i = 0; i < grid_resolution_; i++) {
+      line(original_rgb_frame_,
+           cv::Point(image_width_ / grid_resolution_ * i, 0),
+           cv::Point(image_width_ / grid_resolution_ * i, image_height_),
+           cv::Scalar(255, 0, 0));
+      line(original_rgb_frame_,
+           cv::Point(0, image_height_ / grid_resolution_ * i),
+           cv::Point(image_width_, image_height_ / grid_resolution_ * i),
+           cv::Scalar(255, 0, 0));
     }
+    cv::circle(original_rgb_frame_, cv::Point(goal_.x*image_width_ / grid_resolution_,goal_.y*image_height_ / grid_resolution_),6, cv::Scalar(255,255,0), -1);
+    cv::circle(original_rgb_frame_, cv::Point(robot_pose_.x*image_width_ / grid_resolution_,robot_pose_.y*image_height_ / grid_resolution_),6, cv::Scalar(255,255,0), -1);
+  }
 }
 
 void NF2::show_image(std::string window_name, cv::Mat image) {
