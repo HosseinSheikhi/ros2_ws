@@ -31,8 +31,6 @@ class GlobalPlanner : public rclcpp::Node {
   std::vector<cv::Point> cameras_pose_;
   std::vector<cv::Mat> original_frames_;
 
-
-
   rclcpp::Client<custom_msg_srv::srv::ImageBatch>::SharedPtr segmented_images_client_;
   rclcpp::TimerBase::SharedPtr update_global_planner_timer;
   rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr robot_goal_ui_subscriber_;

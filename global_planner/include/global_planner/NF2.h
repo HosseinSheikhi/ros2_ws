@@ -47,15 +47,24 @@ class NF2 {
   std::vector<std::vector<cv::Point>> origin_; // stores config where wave started
   std::vector<std::vector<cv::Point>> L_; //L_[0] stores configs with distance_ 0, L_[1] stores configs with distance_ 1
   std::vector<cv::Point> accessible_skeleton_; //includes that part of skeleton which is accessible from goal
-  cv::Point goal_{12,7}; // TODO, if I use (15,20) gives error, why?
-  cv::Point robot_pose_{2,8};
+
+  /*
+   * compute_nf2 will receive goal and pose in pixel coordinate,
+   * to compute nf2 we need to convert it to the grid_coordinate,
+   * but we have to keep track of pixel coordinate to do not miss the resolution when we are going to convert it to the
+   * real world and send back to the global planner to be published to navigation stack
+   */
+  cv::Point goal_grid_; //stores the goal in grid coordinate
+  cv::Point robot_pose_grid_; //stores the robot pose in grid coordinate
+  cv::Point goal_pixel_crd_; //stores the goal in pixel coordinate
+  cv::Point robot_pose_pixel_crd_; //stores the robot pose in pixel coordinate
 
   // minor functions for computing nf2
   bool is_grid_free(uint x_index,  uint y_index) const;
   void draw_grids();
   void pre_process_image();
-  std::vector<cv::Point> get_1_neighbors(cv::Point config);
-  std::vector<cv::Point> get_2_neighbors(cv::Point config);
+  std::vector<cv::Point> get_1_neighbors(const cv::Point& config);
+  std::vector<cv::Point> get_2_neighbors(const cv::Point& config);
 
   // main functions for computing nf2
   void distinguish_grids();
@@ -79,9 +88,10 @@ class NF2 {
   cv::Point get_min_vertex(std::vector<std::vector<uint>> distance_vertices, std::vector<cv::Point> Q) const;
   std::vector<cv::Point> best_first_search();
   std::vector<cv::Point> find_final_path(std::vector<std::vector<cv::Point>> path);
-  void debug_final_path(std::vector<cv::Point> final_path);
-  void show_image(std::string window_name, cv::Mat image);
-
+  void debug_final_path(const std::vector<cv::Point>& final_path);
+  void show_image(std::string window_name, const cv::Mat& image) const;
+  cv::Point convert_pixel_to_grid(cv::Point pixel_coord);
+  cv::Point convert_pixel_to_real(cv::Point real_coord);
 };
 
 #endif //GLOBAL_PLANNER_INCLUDE_GLOBAL_PLANNER_NF2_H_
