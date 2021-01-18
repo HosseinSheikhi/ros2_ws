@@ -22,11 +22,10 @@ NF2::NF2( const uint grid_resolution, const uint image_width, const uint image_h
 
 std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
   original_binary_frame_ = frame;
-
-  goal_.x = static_cast<int>(goal.x/(image_width_/grid_resolution_)); // navigation goal TODO: is it best time to convert to indexes?
-  goal_.y = static_cast<int>(goal.y/(image_height_/grid_resolution_)); // navigation goal
-  robot_pose_.x = static_cast<int>(robot_pose.x/(image_width_/grid_resolution_)); // navigation starting point
-  robot_pose_.y = static_cast<int>(robot_pose.y/(image_height_/grid_resolution_)); // navigation starting point
+  goal_pixel_crd_ = goal;
+  robot_pose_pixel_crd_ = robot_pose;
+  goal_grid_ = convert_pixel_to_grid(goal_pixel_crd_); // navigation goal
+  robot_pose_grid_ = convert_pixel_to_grid(robot_pose_pixel_crd_); // navigation starting point
 
   /*
    * main function for numerical potential field
@@ -60,7 +59,7 @@ std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point
   skeleton_potential();
   // computer potential of reminded configurations
   reminder_potential();
-  if (potential_values_[goal_.x][goal_.y] == M or potential_values_[robot_pose_.x][robot_pose_.y] == M) { // means goal_ or pose_ potential value was not calculated and means one of those is not in the free space
+  if (potential_values_[goal_grid_.x][goal_grid_.y] == M or potential_values_[robot_pose_grid_.x][robot_pose_grid_.y] == M) { // means goal_grid_ or pose_ potential value was not calculated and means one of those is not in the free space
     std::cout << "[WARNING] Could not compute global path!" << std::endl;
     return std::vector<cv::Point>();
   }
@@ -73,22 +72,7 @@ std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point
 
   if(!final_path.empty())
     debug_final_path(final_path);
-  return final_path;
-}
-
-void NF2::debug_final_path(std::vector<cv::Point> final_path){
-  if (debug_){
-    for (auto &conf : final_path) {
-      putText(original_rgb_frame_,
-              "*",
-              cv::Point(image_width_ / grid_resolution_ * conf.x + 5, image_height_ / grid_resolution_ * conf.y + 10),
-              cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
-              0.3,
-              cv::Scalar(0, 255, 255),
-              1);
-    }
-    show_image("Global Path", original_rgb_frame_);
-  }
+  return final_path; // TODO: convert to real_world_coordinate
 }
 
 
@@ -97,7 +81,7 @@ cv::Point NF2::get_min_vertex(std::vector<std::vector<uint>> distance_vertices, 
    * returns the vertex by minimum distance
    */
   cv::Point temp;
-  int dist = INFINITY;
+  uint dist = INFINITY;
   for(uint i=0; i<grid_resolution_; i++){
     for(uint j=0; j<grid_resolution_; j++){
       if(distance_vertices[i][j]<dist)
@@ -112,11 +96,11 @@ cv::Point NF2::get_min_vertex(std::vector<std::vector<uint>> distance_vertices, 
 
 std::vector<cv::Point> NF2::find_final_path(std::vector<std::vector<cv::Point>> path){
   std::vector<cv::Point> final_path;
-  int row = goal_.x;
-  int col = goal_.y;
+  int row = goal_grid_.x;
+  int col = goal_grid_.y;
   while (true) {
     auto temp = path[row][col];
-    if (temp == robot_pose_)
+    if (temp == robot_pose_grid_)
       break;
     else {
       final_path.insert(final_path.begin(), temp); // insert at the beginning
@@ -148,7 +132,7 @@ std::vector<cv::Point> NF2::best_first_search(){
 
   std::vector<std::vector<uint>> distance_vertices; //Assign a distance value to all vertices in the input graph
   distance_vertices.resize(grid_resolution_, std::vector<uint>(grid_resolution_,INFINITY)); //Initialize all distance values as INFINITE.
-  distance_vertices[robot_pose_.x][robot_pose_.y] = 0; //Assign distance value as 0 for the source vertex
+  distance_vertices[robot_pose_grid_.x][robot_pose_grid_.y] = 0; //Assign distance value as 0 for the source vertex
 
   std::vector<cv::Point> Q; // includes all the vertices we have to search
   for(uint i=0; i<grid_resolution_; i++)
@@ -171,7 +155,7 @@ std::vector<cv::Point> NF2::best_first_search(){
           distance_vertices[neighbor.x][neighbor.y] =
               distance_vertices[temp.x][temp.y] + potential_values_[neighbor.x][neighbor.y];
           path[neighbor.x][neighbor.y] = temp;
-          if (neighbor == goal_) {
+          if (neighbor == goal_grid_) {
             std::cout<<"[INFO] Global path is find."<<std::endl;
             return find_final_path(path);
           }
@@ -230,10 +214,10 @@ void NF2::skeleton_potential(){
   std::vector<cv::Point> list;
   std::vector<cv::Point> neighbours;
 
-  potential_values_[goal_.x][goal_.y] = 0; // set the goal potential to the zero
-  list.push_back(goal_); // and add the goal to the list
-  accessible_skeleton_.push_back(goal_);
-  for( int i = 0; i<list.size(); i++){
+  potential_values_[goal_grid_.x][goal_grid_.y] = 0; // set the goal potential to the zero
+  list.push_back(goal_grid_); // and add the goal to the list
+  accessible_skeleton_.push_back(goal_grid_);
+  for( uint i = 0; i<list.size(); i++){
     auto var = list[i];
     neighbours.clear();
     neighbours = get_2_neighbors(var);
@@ -254,13 +238,13 @@ bool NF2::connect_goal() {
    */
   int steepest_ascent = -1;
   goal_skeleton_.clear();
-  cv::Point temp = goal_;
+  cv::Point temp = goal_grid_;
   std::vector<cv::Point> neighbours;
-  if(!count(free_configurations_.begin(), free_configurations_.end(), goal_)){
+  if(!count(free_configurations_.begin(), free_configurations_.end(), goal_grid_)){
     std::cout<<"[Warning] In connect_goal function, goal is not in the CFree space!"<<std::endl;
     return false;
   }
-  if(count(skeleton_.begin(), skeleton_.end(), goal_)){
+  if(count(skeleton_.begin(), skeleton_.end(), goal_grid_)){
     std::cout<<"[INFO] In connect_goal function, goal already in the skeleton!"<<std::endl;
     return true;
   }
@@ -270,9 +254,9 @@ bool NF2::connect_goal() {
     neighbours.clear();
     goal_skeleton_.push_back(temp);
     neighbours = get_2_neighbors(temp);
-    if(neighbours.size()==0)
+    if(neighbours.empty())
       return false; // TODO not sure must return false
-    for(auto neighbour : neighbours){
+    for(const auto& neighbour : neighbours){
 
       if(std::count(skeleton_.begin(), skeleton_.end(), neighbour)) // reached to the skeleton
         return true;
@@ -325,7 +309,7 @@ void NF2::find_waves_meet() {
       neighbors.clear();
       neighbors = get_1_neighbors(cv::Point(var->x, var->y));
       // for every 1-neighbor q' of q in CFree
-      for(auto neighbor : neighbors){
+      for(const auto& neighbor : neighbors){
         if(distance_[neighbor.x][neighbor.y]==M){ //q' not visited yet
           distance_[neighbor.x][neighbor.y] = distance_[var->x][var->y]+1;
           origin_[neighbor.x][neighbor.y] = origin_[var->x][var->y];
@@ -351,7 +335,7 @@ void NF2::find_boundaries() {
   for(const auto& Q : obstacle_configurations_) {
     auto neighbors = get_1_neighbors(Q);
     if (!neighbors.empty()) { // has a 1-neighbor Q_prime in free_configurations_ then Q is a boundary config
-      for (auto conf : neighbors)
+      for (const auto& conf : neighbors)
         boundary_configurations_.push_back(conf);
       distance_[Q.x][Q.y] = 0; // distance from obstacle_configurations_
       origin_[Q.x][Q.y] = Q; // config where wave started
@@ -443,7 +427,7 @@ void NF2::connect_goal_debug() {
    * draws the path which connects goal to the skeleton
    */
   if(debug_) {
-    for (auto var : goal_skeleton_)
+    for (const auto& var : goal_skeleton_)
       putText(skeleton_frame_,
               "+",
               cv::Point(image_width_ / grid_resolution_ * var.x + 5, image_height_ / grid_resolution_ * var.y + 10),
@@ -458,8 +442,8 @@ void NF2::connect_goal_debug() {
 void NF2::potential_debug(){
   if(debug_) {
     original_rgb_frame_.copyTo(potential_frame_);
-    for (int i = 0; i < grid_resolution_; i++)
-      for (int j = 0; j < grid_resolution_; j++)
+    for (uint i = 0; i < grid_resolution_; i++)
+      for (uint j = 0; j < grid_resolution_; j++)
         if (potential_values_[i][j] != M)
           putText(potential_frame_,
                   std::to_string(potential_values_[i][j]),
@@ -472,6 +456,20 @@ void NF2::potential_debug(){
   }
 }
 
+void NF2::debug_final_path(const std::vector<cv::Point>& final_path){
+  if (debug_){
+    for (const auto& conf : final_path) {
+      putText(original_rgb_frame_,
+              "*",
+              cv::Point(image_width_ / grid_resolution_ * conf.x + 5, image_height_ / grid_resolution_ * conf.y + 10),
+              cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
+              0.3,
+              cv::Scalar(0, 255, 255),
+              1);
+    }
+    show_image("Global Path", original_rgb_frame_);
+  }
+}
 void NF2::pre_process_image(){
   /*
   * This function has to do followings:
@@ -506,7 +504,7 @@ void NF2::draw_grids() {
    * For illustration purpose. Draw grids on rgb frame
   */
   if (debug_) {
-    for (int i = 0; i < grid_resolution_; i++) {
+    for (uint i = 0; i < grid_resolution_; i++) {
       line(original_rgb_frame_,
            cv::Point(image_width_ / grid_resolution_ * i, 0),
            cv::Point(image_width_ / grid_resolution_ * i, image_height_),
@@ -516,19 +514,19 @@ void NF2::draw_grids() {
            cv::Point(image_width_, image_height_ / grid_resolution_ * i),
            cv::Scalar(255, 0, 0));
     }
-    cv::circle(original_rgb_frame_, cv::Point(goal_.x*image_width_ / grid_resolution_,goal_.y*image_height_ / grid_resolution_),6, cv::Scalar(255,255,0), -1);
-    cv::circle(original_rgb_frame_, cv::Point(robot_pose_.x*image_width_ / grid_resolution_,robot_pose_.y*image_height_ / grid_resolution_),6, cv::Scalar(255,255,0), -1);
+    cv::circle(original_rgb_frame_, cv::Point(goal_grid_.x*image_width_ / grid_resolution_, goal_grid_.y*image_height_ / grid_resolution_), 6, cv::Scalar(255, 255, 0), -1);
+    cv::circle(original_rgb_frame_, cv::Point(robot_pose_grid_.x*image_width_ / grid_resolution_, robot_pose_grid_.y*image_height_ / grid_resolution_), 6, cv::Scalar(255, 255, 0), -1);
   }
 }
 
-void NF2::show_image(std::string window_name, cv::Mat image) {
+void NF2::show_image(std::string window_name, const cv::Mat& image) const {
   if(debug_){
     cv::imshow(window_name + " " +std::to_string(this_instance_index_), image);
     cv::waitKey(1);
   }
 }
 
-std::vector<cv::Point> NF2::get_1_neighbors(cv::Point config) {
+std::vector<cv::Point> NF2::get_1_neighbors(const cv::Point& config) {
   /*
    * returns the free 1-neighbors (up, down, right, left) of config
    */
@@ -544,7 +542,7 @@ std::vector<cv::Point> NF2::get_1_neighbors(cv::Point config) {
   return neighbors;
 }
 
-std::vector<cv::Point> NF2::get_2_neighbors(cv::Point config) {
+std::vector<cv::Point> NF2::get_2_neighbors(const cv::Point& config) {
   /*
   * returns the free 2-neighbors (up, upper-left, upper-right, ...) of config
   */
@@ -569,4 +567,13 @@ std::vector<cv::Point> NF2::get_2_neighbors(cv::Point config) {
   return neighbors;
 }
 
+cv::Point NF2::convert_pixel_to_grid(cv::Point pixel_coord){
+  cv::Point goal_grid;
+  goal_grid.x = static_cast<int>(pixel_coord.x/(image_width_/grid_resolution_));
+  goal_grid.y = static_cast<int>(pixel_coord.y/(image_height_/grid_resolution_));
+  return goal_grid;
+}
 
+cv::Point NF2::convert_pixel_to_real(cv::Point real_coord){
+
+}
