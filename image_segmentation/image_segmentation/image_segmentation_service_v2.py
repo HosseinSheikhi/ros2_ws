@@ -1,7 +1,8 @@
 import sys
 from custom_msg_srv.srv import ImageBatch
-from example_interfaces.srv import AddTwoInts
+from sensor_msgs.msg import Image
 import rclpy
+from rclpy.qos import qos_profile_system_default
 from rclpy.node import Node
 import cv2
 from cv_bridge import CvBridge
@@ -20,13 +21,18 @@ TODO: send a request to overhead cameras must be based on a request from global 
 However, I have faced by deadlock errors when I was trying to develop this version 
 """
 
+
 class ImageSegmentationService(Node):
     def __init__(self):
         super().__init__("image_segmentation_service")
         # define a client to send request for the overhead images
         self.overhead_client = self.create_client(ImageBatch, 'autonomous_robot/overhead_camera_service')
         # gives service to the global planner.
-        self.global_planer_service = self.create_service(ImageBatch, 'autonomous_robot/get_segmented_images', self.give_service_to_global_planner)
+        self.global_planer_service = self.create_service(ImageBatch, 'autonomous_robot/get_segmented_images',
+                                                         self.give_service_to_global_planner)
+
+        # define stitched image publisher for UI
+        self.stitched_image_publisher = self.create_publisher(Image, "autonomous_robot/image_segmentation/stitched_image", qos_profile_system_default )
 
         while not self.overhead_client.wait_for_service(timeout_sec=1):
             self.get_logger().info('overhead cameras service not available, trying again ...')
@@ -37,6 +43,7 @@ class ImageSegmentationService(Node):
 
         self.overhead_images = None
         self.segmented_images = []
+        self.stitched_image = None
         self.overhead_camera_num = None
         self.show_images = False
         self.predictor = Predict()
@@ -53,9 +60,20 @@ class ImageSegmentationService(Node):
     def give_service_to_global_planner(self, request, response):
         self.get_logger().info('Incoming request from global planner')
         self.image_proc(self.overhead_images)
-        for i, segmented_image in enumerate(self.segmented_images):
-            response.image[i] = CvBridge().cv2_to_imgmsg(cvim=segmented_image)
+
+        self.image_stitching()
+        if self.show_images:
+            cv2.imshow("stitched image", self.stitched_image)
+            cv2.waitKey(1)
+        stitched_image_msg = CvBridge().cv2_to_imgmsg(self.stitched_image)
+        response.image[0] = stitched_image_msg
+
+        # publish for the ui
+        self.stitched_image_publisher.publish(stitched_image_msg)
         return response
+
+    def image_stitching(self):
+        self.stitched_image = cv2.hconcat(self.segmented_images)
 
     def image_proc(self, overhead_images):
         self.get_logger().info('doing segmentation ...')
@@ -68,7 +86,7 @@ class ImageSegmentationService(Node):
         self.segmented_images.clear()
         predicted_images = self.predictor.predict(*cv_images)
         for i in range(self.overhead_camera_num):
-            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32)*255.0)
+            self.segmented_images.append(predicted_images[i, :, :].astype(np.float32) * 255.0)
 
         if self.show_images:
             for i, cv_image in enumerate(cv_images):

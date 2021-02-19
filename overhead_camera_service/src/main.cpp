@@ -8,11 +8,9 @@
 int main(int argc, char **argv){
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
-  auto overhead_cam_node = std::make_shared<OverheadCamNode>(options);
-  std::cout<<"Finished";
+  auto overhead_cam_node = std::make_shared<nav2_overhead::OverheadCamNode>(options,3);
 
   rclcpp::spin(overhead_cam_node);
-  std::cout<<"Finished";
   rclcpp::shutdown();
 
   return 0;

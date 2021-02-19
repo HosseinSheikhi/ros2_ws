@@ -10,10 +10,10 @@ UserInterface::UserInterface(rclcpp::NodeOptions options)
       rclcpp::SensorDataQoS(),
       std::bind(&UserInterface::original_image_1_callback, this, std::placeholders::_1));
 
-  image_2_subscriber_ = this->create_subscription<sensor_msgs::msg::Image>(
-      "/overhead_cam_2/camera/image_raw",
-      rclcpp::SensorDataQoS(),
-      std::bind(&UserInterface::original_image_2_callback, this, std::placeholders::_1));
+//  image_2_subscriber_ = this->create_subscription<sensor_msgs::msg::Image>(
+//      "/overhead_cam_2/camera/image_raw",
+//      rclcpp::SensorDataQoS(),
+//      std::bind(&UserInterface::original_image_2_callback, this, std::placeholders::_1));
 
   goal_publisher_ = this->create_publisher<geometry_msgs::msg::Pose>("ui_goal",rclcpp::SystemDefaultsQoS());
 

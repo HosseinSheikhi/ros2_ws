@@ -16,6 +16,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(custom_msg_srv REQUIRED)
@@ -25,6 +26,7 @@ set(dependencies
         rclcpp
         sensor_msgs
         geometry_msgs
+        nav_msgs
         OpenCV
         cv_bridge
         custom_msg_srv
@@ -34,7 +36,8 @@ set(library_name ${PROJECT_NAME})
 
 add_library(${library_name} SHARED
         src/GlobalPlanner.cpp
-        src/NF2.cpp)
+        src/NF2.cpp
+        )
 ament_target_dependencies(${library_name} ${dependencies})
 
 add_executable(global_planner_main src/main.cpp)

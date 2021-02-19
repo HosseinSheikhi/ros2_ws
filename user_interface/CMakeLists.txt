@@ -3,9 +3,16 @@ project(user_interface)
 
 set(FastRTPS_INCLUDE_DIR /opt/ros/foxy/include)
 set(FastRTPS_LIBRARY_RELEASE /opt/ros/foxy/lib/libfastrtps.so)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -19,6 +26,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
 
 set(dependencies
         rclcpp
@@ -36,7 +45,7 @@ add_library(${library_name} SHARED
 ament_target_dependencies(${library_name} ${dependencies})
 
 add_executable(user_interface_main src/main.cpp)
-target_link_libraries(user_interface_main ${library_name})
+target_link_libraries(user_interface_main ${library_name} Qt${QT_VERSION_MAJOR}::Core)
 ament_target_dependencies(user_interface_main ${dependencies})
 
 install(TARGETS

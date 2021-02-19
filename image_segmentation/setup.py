@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'publisher = image_segmentation.image_segmentation_subpub:main',
             'service = image_segmentation.image_segmentation_service:main',
             'service_v2 = image_segmentation.image_segmentation_service_v2:main',
             'client = image_segmentation.client:main',

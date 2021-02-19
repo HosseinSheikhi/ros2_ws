@@ -11,16 +11,23 @@
 class NF2 {
 
  public:
-  explicit NF2( uint grid_resolution, uint image_width = 640, uint image_height=480, bool debug= true);
+
+  explicit NF2( uint grid_resolution, uint image_width = 224*3, uint image_height=224, bool debug= true);
   std::vector<cv::Point> compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose); // returns the grids sequence from robot pose to goal
   static uint total_instances_counter; // keeps track of total number of NF2 instances
 
  private:
+  // we grid the segmented images into squares with grid_resolution_ size,
+  // so the lower grid_resolution the higher precision and the higher time complexity
   const uint grid_resolution_;
+
   const uint image_width_;
   const uint image_height_;
   bool debug_ = true;
-  uint this_instance_index_;
+
+  uint grid_cols_;
+  uint grid_rows_;
+
 
   cv::Mat original_binary_frame_;
   cv::Mat original_rgb_frame_;
@@ -28,11 +35,6 @@ class NF2 {
   cv::Mat boundary_frame_; // will be used for illustration purpose in debug mode to show configs in boundary
   cv::Mat skeleton_frame_; // will be used for illustration purpose in debug mode to show skeleton
   cv::Mat potential_frame_; // will be used for illustration purpose in debug mode to show potential values
-
-  uint erosion_size_{1};
-  uint dilate_size_{1};
-  cv::Mat erode_element_;
-  cv::Mat dilate_element_;
 
   uint const M = 10000;
 
@@ -62,7 +64,7 @@ class NF2 {
   // minor functions for computing nf2
   bool is_grid_free(uint x_index,  uint y_index) const;
   void draw_grids();
-  void pre_process_image();
+
   std::vector<cv::Point> get_1_neighbors(const cv::Point& config);
   std::vector<cv::Point> get_2_neighbors(const cv::Point& config);
 
@@ -82,6 +84,7 @@ class NF2 {
   void connect_goal_debug();
 
   void skeleton_potential();
+  void skeleton_potential_debug();
   void reminder_potential();
   void potential_debug();
 
@@ -90,8 +93,7 @@ class NF2 {
   std::vector<cv::Point> find_final_path(std::vector<std::vector<cv::Point>> path);
   void debug_final_path(const std::vector<cv::Point>& final_path);
   void show_image(std::string window_name, const cv::Mat& image) const;
-  cv::Point convert_pixel_to_grid(cv::Point pixel_coord);
-  cv::Point convert_pixel_to_real(cv::Point real_coord);
+  cv::Point convert_pixel_to_grid(const cv::Point& pixel_coord) const;
 };
 
 #endif //GLOBAL_PLANNER_INCLUDE_GLOBAL_PLANNER_NF2_H_

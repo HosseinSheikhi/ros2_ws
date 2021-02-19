@@ -4,20 +4,10 @@
 
 #include "global_planner/NF2.h"
 
-uint NF2::total_instances_counter = 0;
-
 NF2::NF2( const uint grid_resolution, const uint image_width, const uint image_height , const bool debug)
 : grid_resolution_{grid_resolution}, image_width_{image_width}, image_height_{image_height}, debug_{debug}{ // TODO why will be initialized based on definition sequence
-  total_instances_counter +=1;
-  this_instance_index_ = total_instances_counter;
-  erode_element_ = getStructuringElement(cv::MORPH_RECT,
-                                         cv::Size(2*erosion_size_ + 1, 2*erosion_size_+1 ),
-                                         cv::Point(erosion_size_, erosion_size_ ) );
-
-
-  dilate_element_ = getStructuringElement(cv::MORPH_RECT,
-                                          cv::Size(2*dilate_size_ + 1, 2*dilate_size_+1 ),
-                                          cv::Point(dilate_size_, dilate_size_ ) );
+  grid_rows_ = image_height_/grid_resolution;
+  grid_cols_ = image_width_/grid_resolution;
 }
 
 std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point robot_pose) {
@@ -32,8 +22,6 @@ std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point
    * NOTE: do not forget to clear all the containers at the beginning of each function
    */
 
-  // do pre-processing on original binary image
-  pre_process_image();
 
   //convert original binary frame to original rgb frame for illustration purposes
   original_binary_frame_.copyTo(original_rgb_frame_);
@@ -73,6 +61,7 @@ std::vector<cv::Point> NF2::compute_nf2(cv::Mat frame, cv::Point goal, cv::Point
   if(!final_path.empty())
     debug_final_path(final_path);
   return final_path; // TODO: convert to real_world_coordinate
+
 }
 
 
@@ -82,19 +71,19 @@ cv::Point NF2::get_min_vertex(std::vector<std::vector<uint>> distance_vertices, 
    */
   cv::Point temp;
   uint dist = INFINITY;
-  for(uint i=0; i<grid_resolution_; i++){
-    for(uint j=0; j<grid_resolution_; j++){
-      if(distance_vertices[i][j]<dist)
-        if(count(Q.begin(), Q.end(), cv::Point(i,j))){
-          temp= cv::Point(i,j);
-          dist=distance_vertices[i][j];
+  for(uint row=0; row<grid_rows_; row++){
+    for(uint col=0; col<grid_cols_; col++){
+      if(distance_vertices[row][col]<dist)
+        if(count(Q.begin(), Q.end(), cv::Point(row, col))){
+          temp= cv::Point(row, col);
+          dist=distance_vertices[row][col];
         }
     }
   }
   return temp;
 }
 
-std::vector<cv::Point> NF2::find_final_path(std::vector<std::vector<cv::Point>> path){
+std::vector<cv::Point> NF2::  find_final_path(std::vector<std::vector<cv::Point>> path){
   std::vector<cv::Point> final_path;
   int row = goal_grid_.x;
   int col = goal_grid_.y;
@@ -128,17 +117,17 @@ std::vector<cv::Point> NF2::best_first_search(){
    */
   std::vector<cv::Point> spt;
   std::vector<std::vector<cv::Point>> path;
-  path.resize(grid_resolution_, std::vector<cv::Point>(grid_resolution_));
+  path.resize(grid_rows_, std::vector<cv::Point>(grid_cols_));
 
   std::vector<std::vector<uint>> distance_vertices; //Assign a distance value to all vertices in the input graph
-  distance_vertices.resize(grid_resolution_, std::vector<uint>(grid_resolution_,INFINITY)); //Initialize all distance values as INFINITE.
+  distance_vertices.resize(grid_rows_, std::vector<uint>(grid_cols_,INFINITY)); //Initialize all distance values as INFINITE.
   distance_vertices[robot_pose_grid_.x][robot_pose_grid_.y] = 0; //Assign distance value as 0 for the source vertex
 
   std::vector<cv::Point> Q; // includes all the vertices we have to search
-  for(uint i=0; i<grid_resolution_; i++)
-    for(uint j=0; j<grid_resolution_; j++)
-      if(potential_values_[i][j]!=M) // we have to search those who their potential value is computed already
-        Q.push_back(cv::Point(i,j));
+  for(uint row=0; row<grid_rows_; row++)
+    for(uint col=0; col<grid_cols_; col++)
+      if(potential_values_[row][col]!=M) // we have to search those who their potential value is computed already
+        Q.push_back(cv::Point(row, col));
 
   std::vector<cv::Point> neighbours;
 
@@ -174,7 +163,7 @@ void NF2::reminder_potential() {
    * using  by wave front expansion. Look at Figure4.
    */
   std::vector<std::vector<cv::Point>> list;
-  list.resize(grid_resolution_, std::vector<cv::Point>());
+  list.resize(grid_cols_, std::vector<cv::Point>());
   list[0]=accessible_skeleton_;
   std::vector<cv::Point> neighbours;
   for(uint row=0; row<list.size(); row++){
@@ -192,9 +181,9 @@ void NF2::reminder_potential() {
              * already computed in skeleton_potential.
              */
             if (row==0)
-              potential_values_[neighbor.x][neighbor.y] = potential_values_[var.x][var.y] + 2;
+              potential_values_[neighbor.x][neighbor.y] = potential_values_[var.x][var.y] + 4;
             else
-              potential_values_[neighbor.x][neighbor.y] = potential_values_[var.x][var.y] + 1;
+              potential_values_[neighbor.x][neighbor.y] = potential_values_[var.x][var.y] + 4;
             list[row + 1].push_back(neighbor);
           }
         }
@@ -210,7 +199,7 @@ void NF2::skeleton_potential(){
    */
   potential_values_.clear();
   accessible_skeleton_.clear();
-  potential_values_.resize(grid_resolution_, std::vector<uint>(grid_resolution_,M));
+  potential_values_.resize(grid_rows_, std::vector<uint>(grid_cols_,M));
   std::vector<cv::Point> list;
   std::vector<cv::Point> neighbours;
 
@@ -230,6 +219,7 @@ void NF2::skeleton_potential(){
         }
     }
   }
+  skeleton_potential_debug();
 }
 
 bool NF2::connect_goal() {
@@ -282,9 +272,9 @@ void NF2::compute_skeleton() {
   origin_.clear();
   L_.clear();
   skeleton_.clear();
-  distance_.resize(grid_resolution_, std::vector<uint>(grid_resolution_,M)); // initial distance_ values to M
-  origin_.resize(grid_resolution_, std::vector<cv::Point>(grid_resolution_));
-  L_.resize(grid_resolution_, std::vector<cv::Point>());
+  distance_.resize(grid_rows_, std::vector<uint>(grid_cols_,M)); // initial distance_ values to M
+  origin_.resize(grid_rows_, std::vector<cv::Point>(grid_cols_));
+  L_.resize(grid_cols_, std::vector<cv::Point>()); // TODO: i just resized in width cause it is bigger than hight
 
   /*
    * Find boundary configs for C-obstacle
@@ -313,7 +303,7 @@ void NF2::find_waves_meet() {
         if(distance_[neighbor.x][neighbor.y]==M){ //q' not visited yet
           distance_[neighbor.x][neighbor.y] = distance_[var->x][var->y]+1;
           origin_[neighbor.x][neighbor.y] = origin_[var->x][var->y];
-          L_[distance_[neighbor.x][neighbor.y]].push_back(neighbor); //L i+1
+          L_[distance_[neighbor.x][neighbor.y]].push_back(neighbor); // TODO, Not quire sure it must be L_[distance_[neighbor.x][neighbor.y]] or L_[i+1]
         }
         else{
           cv::Point origin_q = origin_[var->x][var->y];
@@ -354,12 +344,12 @@ void NF2::distinguish_grids() {
   free_configurations_.clear();
   obstacle_configurations_.clear();
 
-  for(uint i=0;i<grid_resolution_;i++)
-    for(uint j=0;j<grid_resolution_;j++)
-      if(is_grid_free(i,j))
-        free_configurations_.push_back(cv::Point(i,j)); // TODO: use emplace_back instead of push_back
+  for(uint row=0; row<grid_rows_; row++)
+    for(uint col=0; col<grid_cols_; col++)
+      if(is_grid_free(row, col))
+        free_configurations_.push_back(cv::Point(row, col)); // TODO: use emplace_back instead of push_back
       else{
-        obstacle_configurations_.push_back(cv::Point(i,j));
+        obstacle_configurations_.push_back(cv::Point(row, col));
       }
 
   distinguished_grids_debug();
@@ -374,15 +364,15 @@ void NF2::distinguished_grids_debug() {
     for(auto& conf : free_configurations_)
       putText(configs_frame_,
               "1",
-              cv::Point(image_width_/grid_resolution_*conf.x+5,image_height_/grid_resolution_*conf.y+10),
-              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.3, cv::Scalar (0, 0, 255),
+              cv::Point(grid_resolution_*conf.y+3,grid_resolution_*conf.x+7),
+              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.2, cv::Scalar (0, 0, 255),
               1);
 
     for(auto& conf : obstacle_configurations_)
       putText(configs_frame_,
               "0",
-              cv::Point(image_width_/grid_resolution_*conf.x+5,image_height_/grid_resolution_*conf.y+10),
-              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.3, cv::Scalar (0, 0, 255),
+              cv::Point(grid_resolution_*conf.y+3,grid_resolution_*conf.x+7),
+              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.2, cv::Scalar (0, 0, 255),
               1);
 
     show_image("free VS obstacle (distinguish_grids)",configs_frame_);
@@ -397,10 +387,10 @@ void NF2::find_boundaries_debug() {
     original_rgb_frame_.copyTo(boundary_frame_);
     for (const auto& var : boundary_configurations_)
       putText(boundary_frame_,
-              "0",
-              cv::Point(var.x * image_width_ / grid_resolution_ + 5, var.y * image_height_ / grid_resolution_ + 10),
+              "b",
+              cv::Point(var.y * grid_resolution_ + 3, var.x * grid_resolution_ + 7),
               cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
-              0.3,
+              0.2,
               cv::Scalar(255, 255, 0),
               1);
     show_image("boundaries (find_boundary)",boundary_frame_);
@@ -415,8 +405,8 @@ void NF2::compute_skeleton_debug() {
     original_rgb_frame_.copyTo(skeleton_frame_);
     for(const auto& var : skeleton_)
       putText(skeleton_frame_,"+",
-              cv::Point(image_width_/grid_resolution_*var.x+5,image_height_/grid_resolution_*var.y+10),
-              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.3, cv::Scalar (0, 0, 255), 1);
+              cv::Point(grid_resolution_*var.y+3,grid_resolution_*var.x+7),
+              cv::FONT_HERSHEY_SCRIPT_SIMPLEX, 0.2, cv::Scalar (0, 0, 255), 1);
     show_image("skeleton (compute_skeleton)",skeleton_frame_);
   }
 }
@@ -430,9 +420,9 @@ void NF2::connect_goal_debug() {
     for (const auto& var : goal_skeleton_)
       putText(skeleton_frame_,
               "+",
-              cv::Point(image_width_ / grid_resolution_ * var.x + 5, image_height_ / grid_resolution_ * var.y + 10),
+              cv::Point( grid_resolution_ * var.y + 3,  grid_resolution_ * var.x + 7),
               cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
-              0.3,
+              0.2,
               cv::Scalar(0, 255, 0),
               1);
     show_image("full skeleton (connect_goal)",skeleton_frame_);
@@ -442,17 +432,34 @@ void NF2::connect_goal_debug() {
 void NF2::potential_debug(){
   if(debug_) {
     original_rgb_frame_.copyTo(potential_frame_);
-    for (uint i = 0; i < grid_resolution_; i++)
-      for (uint j = 0; j < grid_resolution_; j++)
-        if (potential_values_[i][j] != M)
+    for (uint row = 0; row < grid_rows_; row++)
+      for (uint col = 0; col < grid_cols_; col++)
+        if (potential_values_[row][col] != M)
           putText(potential_frame_,
-                  std::to_string(potential_values_[i][j]),
-                  cv::Point(image_width_ / grid_resolution_ * i + 5, image_height_ / grid_resolution_ * j + 10),
+                  std::to_string(potential_values_[row][col]),
+                  cv::Point(grid_resolution_ * col + 3, grid_resolution_ * row + 7),
                   cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
-                  0.3,
+                  0.2,
                   cv::Scalar(0, 0, 255),
                   1);
     show_image("potential values", potential_frame_);
+  }
+}
+
+void NF2::skeleton_potential_debug(){
+  if(debug_) {
+    original_rgb_frame_.copyTo(potential_frame_);
+    for (uint row = 0; row < grid_rows_; row++)
+      for (uint col = 0; col < grid_cols_; col++)
+        if (potential_values_[row][col] != M)
+          putText(potential_frame_,
+                  std::to_string(potential_values_[row][col]),
+                  cv::Point(grid_resolution_ * col + 3, grid_resolution_ * row + 7),
+                  cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
+                  0.2,
+                  cv::Scalar(0, 0, 255),
+                  1);
+    show_image("skeleton potential values", potential_frame_);
   }
 }
 
@@ -461,42 +468,28 @@ void NF2::debug_final_path(const std::vector<cv::Point>& final_path){
     for (const auto& conf : final_path) {
       putText(original_rgb_frame_,
               "*",
-              cv::Point(image_width_ / grid_resolution_ * conf.x + 5, image_height_ / grid_resolution_ * conf.y + 10),
+              cv::Point( grid_resolution_ * conf.y + 3, grid_resolution_ * conf.x + 7),
               cv::FONT_HERSHEY_SCRIPT_SIMPLEX,
-              0.3,
+              0.2,
               cv::Scalar(0, 255, 255),
               1);
     }
     show_image("Global Path", original_rgb_frame_);
   }
 }
-void NF2::pre_process_image(){
-  /*
-  * This function has to do followings:
-  * 1- convert cv_images to binary_cv_images
-  * 2- apply erode and dilate to remove noises
-  * 3- resize the images
-  */
 
-    cv::threshold(original_binary_frame_,original_binary_frame_,128,255,cv::THRESH_BINARY);
-    cv::erode(original_binary_frame_, original_binary_frame_, erode_element_);
-    cv::dilate(original_binary_frame_, original_binary_frame_, dilate_element_);
-    cv::resize(original_binary_frame_, original_binary_frame_, cv::Size(image_width_, image_height_));
-
-}
-
-bool NF2::is_grid_free(const uint x_index, const uint y_index) const {
+bool NF2::is_grid_free(const uint grid_row_index, const uint grid_col_index) const {
   /*
    * by counting number of white pixels in grid (x_index, y_index) checks whether grid is free or obstacle
    */
   uint white_pixels_counter{0};
-  for (uint c = x_index*image_width_/grid_resolution_; c <(x_index+1)*image_width_/grid_resolution_; c++)
-    for (uint r = y_index*image_height_/grid_resolution_; r <(y_index+1)*image_height_/grid_resolution_; r++)
-      if(int(original_binary_frame_.at<float>(r,c))>128) {
-        white_pixels_counter++;
-      }
+  for (uint image_y_index = grid_row_index*grid_resolution_; image_y_index <(grid_row_index+1)*grid_resolution_; image_y_index++)
+    for (uint image_x_index = grid_col_index*grid_resolution_; image_x_index <(grid_col_index+1)*grid_resolution_; image_x_index++)
+    if(int(original_binary_frame_.at<float>(image_y_index, image_x_index))>128) {
+      white_pixels_counter++;
+    }
 
-  return (white_pixels_counter < 10);
+  return (white_pixels_counter < 5);
 }
 
 void NF2::draw_grids() {
@@ -504,24 +497,27 @@ void NF2::draw_grids() {
    * For illustration purpose. Draw grids on rgb frame
   */
   if (debug_) {
-    for (uint i = 0; i < grid_resolution_; i++) {
+    for (uint i = 0; i < grid_cols_; i++) {
       line(original_rgb_frame_,
-           cv::Point(image_width_ / grid_resolution_ * i, 0),
-           cv::Point(image_width_ / grid_resolution_ * i, image_height_),
+           cv::Point(grid_resolution_ * i, 0),
+           cv::Point(grid_resolution_ * i, image_height_),
            cv::Scalar(255, 0, 0));
+
+    }
+    for (uint i = 0; i < grid_rows_; i++) {
       line(original_rgb_frame_,
-           cv::Point(0, image_height_ / grid_resolution_ * i),
-           cv::Point(image_width_, image_height_ / grid_resolution_ * i),
+           cv::Point(0, grid_resolution_ * i),
+           cv::Point(image_width_, grid_resolution_ * i),
            cv::Scalar(255, 0, 0));
     }
-    cv::circle(original_rgb_frame_, cv::Point(goal_grid_.x*image_width_ / grid_resolution_, goal_grid_.y*image_height_ / grid_resolution_), 6, cv::Scalar(255, 255, 0), -1);
-    cv::circle(original_rgb_frame_, cv::Point(robot_pose_grid_.x*image_width_ / grid_resolution_, robot_pose_grid_.y*image_height_ / grid_resolution_), 6, cv::Scalar(255, 255, 0), -1);
+    cv::circle(original_rgb_frame_, goal_pixel_crd_, 4, cv::Scalar(255, 255, 0), -1);
+    cv::circle(original_rgb_frame_, robot_pose_pixel_crd_, 4, cv::Scalar(255, 255, 0), -1);
   }
 }
 
 void NF2::show_image(std::string window_name, const cv::Mat& image) const {
   if(debug_){
-    cv::imshow(window_name + " " +std::to_string(this_instance_index_), image);
+    cv::imshow(window_name , image);
     cv::waitKey(1);
   }
 }
@@ -567,13 +563,10 @@ std::vector<cv::Point> NF2::get_2_neighbors(const cv::Point& config) {
   return neighbors;
 }
 
-cv::Point NF2::convert_pixel_to_grid(cv::Point pixel_coord){
+cv::Point NF2::convert_pixel_to_grid(const cv::Point& pixel_coord) const{
   cv::Point goal_grid;
-  goal_grid.x = static_cast<int>(pixel_coord.x/(image_width_/grid_resolution_));
-  goal_grid.y = static_cast<int>(pixel_coord.y/(image_height_/grid_resolution_));
+  goal_grid.y = static_cast<int>(pixel_coord.x/grid_resolution_);
+  goal_grid.x = static_cast<int>(pixel_coord.y/grid_resolution_);
   return goal_grid;
 }
 
-cv::Point NF2::convert_pixel_to_real(cv::Point real_coord){
-
-}

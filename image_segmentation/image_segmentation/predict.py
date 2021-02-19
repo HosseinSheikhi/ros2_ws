@@ -13,7 +13,7 @@ class Predict():
     def __init__(self):
         self.model = EncoderDecoder(NUM_CLASS, decoder_with_BN=False)
         self.model.load_weights(
-            "/home/hossein/ImageSegmentation/VGG16/weights/WithoutBN/FreezedEncoder/35KTrainingImagewithAugmentation/NaiveLoss3/")
+            "/home/hossein/dev_ws/src/image_segmentation/image_segmentation/weights/NaiveLoss5/")
 
     def normalize(self, input_image: tf.Tensor) -> tf.Tensor:
         input_image = tf.image.resize(input_image, (IMAGE_SIZE, IMAGE_SIZE))
