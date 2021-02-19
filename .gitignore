@@ -11,3 +11,4 @@ CTestTestfile.cmake
 _deps
 __pycache__/
 cmake-build-*/
+image_segmentation/image_segmentation/weights/*
